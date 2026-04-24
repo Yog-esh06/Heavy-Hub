@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        userDoc(request.auth.uid).data.roles != null &&
+        userDoc(request.auth.uid).data.roles.hasAny(['admin']);
+    }
+
+    function isBookingParticipant(data) {
+      return signedIn() && (
+        data.renterId == request.auth.uid ||
+        data.ownerId == request.auth.uid ||
+        data.driverId == request.auth.uid
+      );
+    }
+
+    function chatRoom(roomId) {
+      return get(/databases/$(database)/documents/bookingChats/$(roomId));
+    }
+
+    function isChatParticipant(roomId) {
+      return signedIn() &&
+        chatRoom(roomId).data.participants != null &&
+        chatRoom(roomId).data.participants.hasAny([request.auth.uid]);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn() &&
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow delete: if signedIn() &&
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isBookingParticipant(resource.data) || isAdmin();
+      allow create: if false;
+      allow update: if isBookingParticipant(resource.data) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /drivers/{driverId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        driverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /bookingChats/{roomId} {
+      allow read: if isChatParticipant(roomId) || isAdmin();
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isChatParticipant(roomId) || isAdmin();
+        allow create: if isChatParticipant(roomId) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 2000;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

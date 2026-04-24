@@ -1,0 +1,142 @@
+import { VehicleTypes, ListingTypes, VehicleStatus } from "./types/Vehicle.js";
+import { BookingStatus, PaymentStatus, RefundPolicy } from "./types/Booking.js";
+import { UserRoles } from "./types/User.js";
+import { DriverApplicationStatus, AvailableVehicleTypes } from "./types/Driver.js";
+
+export {
+  // Vehicle constants
+  VehicleTypes,
+  ListingTypes,
+  VehicleStatus,
+  // Booking constants
+  BookingStatus,
+  PaymentStatus,
+  RefundPolicy,
+  // User constants
+  UserRoles,
+  // Driver constants
+  DriverApplicationStatus,
+  AvailableVehicleTypes,
+};
+
+// Location constants for filtering
+export const INDIAN_STATES = [
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chhattisgarh",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+];
+
+// Equipment categories for browsing
+export const EQUIPMENT_CATEGORIES = [
+  {
+    id: "tractor",
+    name: "Tractors",
+    emoji: "🚜",
+    description: "Agricultural tractors for farming",
+  },
+  {
+    id: "harvester",
+    name: "Harvesters",
+    emoji: "🌾",
+    description: "Combine harvesters and grain collectors",
+  },
+  {
+    id: "jcb",
+    name: "JCB & Loaders",
+    emoji: "🏗️",
+    description: "Backhoe loaders and excavators",
+  },
+  {
+    id: "excavator",
+    name: "Excavators",
+    emoji: "⛏️",
+    description: "Heavy excavation equipment",
+  },
+  {
+    id: "bulldozer",
+    name: "Bulldozers",
+    emoji: "🔨",
+    description: "Dozing and grading equipment",
+  },
+  {
+    id: "crane",
+    name: "Cranes",
+    emoji: "🏗️",
+    description: "Lifting and hoisting equipment",
+  },
+];
+
+// Price ranges for filtering
+export const PRICE_RANGES = [
+  { label: "Under ₹1,000", min: 0, max: 1000 },
+  { label: "₹1,000 - ₹5,000", min: 1000, max: 5000 },
+  { label: "₹5,000 - ₹10,000", min: 5000, max: 10000 },
+  { label: "₹10,000+", min: 10000, max: Infinity },
+];
+
+// Proximity search radius in kilometers
+export const DRIVER_SEARCH_RADIUS_KM = 50;
+
+// Map constants
+export const DEFAULT_MAP_CENTER = { lat: 20.5937, lng: 78.9629 }; // India center
+export const DEFAULT_MAP_ZOOM = 5;
+export const VEHICLE_MAP_ZOOM = 15;
+
+// Time constants
+export const BOOKING_CONFIRMATION_DELAY_MS = 2000; // Show confirmation for 2 seconds
+export const TOAST_DURATION_MS = 3000; // Toast notification duration
+export const API_TIMEOUT_MS = 30000; // Cloud Function timeout
+
+export const TIME_SLOTS = [
+  "06:00",
+  "07:00",
+  "08:00",
+  "09:00",
+  "10:00",
+  "11:00",
+  "12:00",
+  "13:00",
+  "14:00",
+  "15:00",
+  "16:00",
+  "17:00",
+  "18:00",
+  "19:00",
+  "20:00",
+  "21:00",
+];
+
+// Validation rules
+export const VALIDATION = {
+  MIN_EXPERIENCE_YEARS: 1,
+  MAX_EXPERIENCE_YEARS: 50,
+  MIN_PHONE_LENGTH: 10,
+  MAX_PHONE_LENGTH: 15,
+  MIN_LISTING_PRICE: 100,
+  MIN_DRIVER_FEE: 200,
+};
