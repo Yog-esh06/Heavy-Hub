@@ -1,8 +1,26 @@
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { storage } from "../config/firebase";
+import { uploadToCloudinary } from "../config/cloudinary";
 
-export const uploadImage = async (file, path) => {
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
-};
+export async function uploadImage(file, folder = "vehicles") {
+  if (!file) {
+    throw new Error("No file provided");
+  }
+
+  return uploadToCloudinary(file, `heavyhub/${folder}`);
+}
+
+export async function uploadMultipleImages(files, folder = "vehicles") {
+  const uploads = Array.from(files).map((file) => uploadImage(file, folder));
+  return Promise.all(uploads);
+}
+
+export async function uploadDocument(file, folder = "documents") {
+  if (!file) {
+    throw new Error("No file provided");
+  }
+
+  return uploadToCloudinary(file, `heavyhub/${folder}`);
+}
+
+export async function deleteFile(url) {
+  console.warn("File deletion not implemented on frontend. URL:", url);
+}

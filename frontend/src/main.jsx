@@ -5,6 +5,7 @@ import App from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
 import { CartProvider } from "./store/CartContext";
 import { NotificationProvider } from "./store/NotificationContext";
+import { seedDemoDataIfEmpty } from "./data/seedFirestore";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -20,3 +21,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+seedDemoDataIfEmpty();

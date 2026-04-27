@@ -6,7 +6,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { auth, db } from "../config/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 export const AuthContext = createContext();
 
@@ -35,15 +35,21 @@ export const AuthProvider = ({ children }) => {
             setRoles(profileData.roles || []);
             setActiveRole(profileData.activeRole);
           } else {
-            // New user - profile created by onUserCreate trigger
-            setUserProfile({
+            const newProfile = {
               uid: authUser.uid,
               email: authUser.email,
               displayName: authUser.displayName || "User",
               photoURL: authUser.photoURL || "",
+              phone: "",
               roles: [],
+              role: null,
               activeRole: null,
-            });
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            };
+
+            await setDoc(userRef, newProfile, { merge: true });
+            setUserProfile(newProfile);
             setRoles([]);
             setActiveRole(null);
           }
@@ -74,6 +80,24 @@ export const AuthProvider = ({ children }) => {
       provider.addScope("email");
 
       const result = await signInWithPopup(auth, provider);
+      const userRef = doc(db, "users", result.user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName || "User",
+          photoURL: result.user.photoURL || "",
+          phone: "",
+          roles: [],
+          role: null,
+          activeRole: null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
       return result.user;
     } catch (err) {
       setError(err.message);

@@ -1,65 +1,106 @@
 import {
   collection,
-  query,
-  where,
-  getDocs,
   doc,
   getDoc,
+  getDocs,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
-import { functions, db } from "../config/firebase";
-import { httpsCallable } from "firebase/functions";
+import { db } from "../config/firebase";
+import { calculateHaversineDistance } from "../utils/distance";
 
-/**
- * Assign nearest available driver (calls Cloud Function)
- */
 export const assignNearestDriver = async (pickupLocation, vehicleType, startDate) => {
   try {
-    const assignDriverFn = httpsCallable(functions, "assignDriver");
+    const pickupLat = pickupLocation?.lat;
+    const pickupLng = pickupLocation?.lng;
 
-    const result = await assignDriverFn({
-      pickupLocation,
-      vehicleType,
-      startDate,
+    if (pickupLat == null || pickupLng == null) {
+      return { success: false, driverId: null, driver: null };
+    }
+
+    const driversRef = collection(db, "drivers");
+    const driversQuery = query(
+      driversRef,
+      where("isAvailable", "==", true),
+      where("applicationStatus", "==", "approved")
+    );
+
+    const snapshot = await getDocs(driversQuery);
+    const drivers = snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
+
+    const withDistance = drivers
+      .filter((driver) => driver.location?.lat != null && driver.location?.lng != null)
+      .filter((driver) => {
+        if (!vehicleType) {
+          return true;
+        }
+        return Array.isArray(driver.vehicleTypes)
+          ? driver.vehicleTypes.includes(String(vehicleType).toLowerCase())
+          : true;
+      })
+      .map((driver) => ({
+        ...driver,
+        distance: calculateHaversineDistance(
+          pickupLat,
+          pickupLng,
+          driver.location.lat,
+          driver.location.lng
+        ),
+      }))
+      .filter((driver) => driver.distance <= 50)
+      .sort((a, b) => a.distance - b.distance);
+
+    if (withDistance.length === 0) {
+      return { success: false, driverId: null, driver: null, startDate };
+    }
+
+    const nearest = withDistance[0];
+
+    await updateDoc(doc(db, "drivers", nearest.id), {
+      isAvailable: false,
+      updatedAt: new Date(),
     });
 
-    return result.data;
+    return {
+      success: true,
+      driverId: nearest.id,
+      driver: nearest,
+      startDate,
+    };
   } catch (error) {
     console.error("Error assigning driver:", error);
     throw error;
   }
 };
 
-/**
- * Apply as a driver
- */
 export const applyAsDriver = async (driverData) => {
   try {
     const driversRef = collection(db, "drivers");
-    const driverDocRef = doc(driversRef, driverData.uid);
+    const driverId = driverData.uid || driverData.userId;
+    const driverDocRef = doc(driversRef, driverId);
 
     await setDoc(driverDocRef, {
       ...driverData,
+      uid: driverId,
       applicationStatus: "pending",
       isAvailable: true,
       currentJobId: null,
       rating: 0,
       reviewCount: 0,
       totalJobsCompleted: 0,
+      location: driverData.location || driverData.currentLocation || null,
       createdAt: new Date(),
     });
 
-    return { id: driverDocRef.id, ...driverData };
+    return { id: driverDocRef.id, ...driverData, uid: driverId };
   } catch (error) {
     console.error("Error applying as driver:", error);
     throw error;
   }
 };
 
-/**
- * Get driver profile by ID
- */
 export const getDriverById = async (driverId) => {
   try {
     const driverRef = doc(db, "drivers", driverId);
@@ -78,9 +119,6 @@ export const getDriverById = async (driverId) => {
 
 export const getDriverProfile = getDriverById;
 
-/**
- * Get nearby drivers (public list for map display)
- */
 export const getNearbyDrivers = async (location, radiusKm = 50) => {
   try {
     const q = query(
@@ -90,13 +128,14 @@ export const getNearbyDrivers = async (location, radiusKm = 50) => {
     );
 
     const snapshot = await getDocs(q);
-    const drivers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const drivers = snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
 
-    // Filter by radius (client-side)
     return drivers.filter((driver) => {
-      if (!driver.location || driver.location.lat === null) return false;
+      if (!driver.location || driver.location.lat === null) {
+        return false;
+      }
 
-      const distance = calculateDistance(
+      const distance = calculateHaversineDistance(
         location.lat,
         location.lng,
         driver.location.lat,
@@ -111,16 +150,13 @@ export const getNearbyDrivers = async (location, radiusKm = 50) => {
   }
 };
 
-/**
- * Get driver application status
- */
 export const getDriverApplicationStatus = async (userId) => {
   try {
     const driverRef = doc(db, "drivers", userId);
     const driverSnap = await getDoc(driverRef);
 
     if (!driverSnap.exists()) {
-      return null; // Not applied
+      return null;
     }
 
     const driver = driverSnap.data();
@@ -135,9 +171,6 @@ export const getDriverApplicationStatus = async (userId) => {
   }
 };
 
-/**
- * Update driver availability
- */
 export const updateDriverAvailability = async (driverId, isAvailable) => {
   try {
     const driverRef = doc(db, "drivers", driverId);
@@ -146,16 +179,13 @@ export const updateDriverAvailability = async (driverId, isAvailable) => {
       updatedAt: new Date(),
     });
 
-    return await getDriverById(driverId);
+    return getDriverById(driverId);
   } catch (error) {
     console.error("Error updating driver availability:", error);
     throw error;
   }
 };
 
-/**
- * Update driver current job
- */
 export const updateDriverCurrentJob = async (driverId, bookingId) => {
   try {
     const driverRef = doc(db, "drivers", driverId);
@@ -165,49 +195,35 @@ export const updateDriverCurrentJob = async (driverId, bookingId) => {
       updatedAt: new Date(),
     });
 
-    return await getDriverById(driverId);
+    return getDriverById(driverId);
   } catch (error) {
     console.error("Error updating driver job:", error);
     throw error;
   }
 };
 
-/**
- * Get all drivers (admin)
- */
 export const getAllDrivers = async () => {
   try {
     const q = query(collection(db, "drivers"));
-
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
   } catch (error) {
     console.error("Error fetching drivers:", error);
     throw error;
   }
 };
 
-/**
- * Get pending driver applications (admin)
- */
 export const getPendingDriverApplications = async () => {
   try {
-    const q = query(
-      collection(db, "drivers"),
-      where("applicationStatus", "==", "pending")
-    );
-
+    const q = query(collection(db, "drivers"), where("applicationStatus", "==", "pending"));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
   } catch (error) {
     console.error("Error fetching pending applications:", error);
     throw error;
   }
 };
 
-/**
- * Approve driver application (admin)
- */
 export const approveDriverApplication = async (driverId, userId) => {
   try {
     const driverRef = doc(db, "drivers", driverId);
@@ -217,7 +233,6 @@ export const approveDriverApplication = async (driverId, userId) => {
       updatedAt: new Date(),
     });
 
-    // Add driver role to user
     const userRef = doc(db, "users", userId);
     const userSnap = await getDoc(userRef);
     const currentRoles = userSnap.data().roles || [];
@@ -228,16 +243,13 @@ export const approveDriverApplication = async (driverId, userId) => {
       });
     }
 
-    return await getDriverById(driverId);
+    return getDriverById(driverId);
   } catch (error) {
     console.error("Error approving driver:", error);
     throw error;
   }
 };
 
-/**
- * Reject driver application (admin)
- */
 export const rejectDriverApplication = async (driverId) => {
   try {
     const driverRef = doc(db, "drivers", driverId);
@@ -246,26 +258,9 @@ export const rejectDriverApplication = async (driverId) => {
       updatedAt: new Date(),
     });
 
-    return await getDriverById(driverId);
+    return getDriverById(driverId);
   } catch (error) {
     console.error("Error rejecting driver:", error);
     throw error;
   }
 };
-
-/**
- * Helper: Calculate distance between coordinates
- */
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}

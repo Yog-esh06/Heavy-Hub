@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { getAssistantReply } from "../../services/helpAssistant.service";
+import { getAIResponse } from "../../services/helpAssistant.service";
 
 const suggestedPromptsByRoute = {
   "/": [
@@ -29,7 +29,8 @@ const FloatingHelpWidget = () => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [history, setHistory] = useState([]);
   const [messages, setMessages] = useState([
     {
       id: "welcome",
@@ -40,36 +41,47 @@ const FloatingHelpWidget = () => {
 
   const suggestions = useMemo(() => {
     const direct = suggestedPromptsByRoute[location.pathname];
-    if (direct) return direct;
+    if (direct) {
+      return direct;
+    }
     if (location.pathname.startsWith("/dashboard")) {
       return ["How do dashboards work?", "How do I switch roles?", "Where do I manage bookings?"];
     }
     return ["How do I use this site?", "Where do I browse vehicles?", "How does login work?"];
   }, [location.pathname]);
 
-  const sendMessage = async (question) => {
-    const trimmed = question.trim();
-    if (!trimmed) return;
+  async function handleSend(preset) {
+    const nextInput = typeof preset === "string" ? preset : input;
+    if (!nextInput.trim()) {
+      return;
+    }
 
-    const userMessage = { id: `${Date.now()}-user`, role: "user", text: trimmed };
-    setMessages((current) => [...current, userMessage]);
+    const userText = nextInput.trim();
+    const userMsg = { role: "user", content: userText };
+    const newHistory = [...history, userMsg];
+
+    setHistory(newHistory);
+    setMessages((prev) => [...prev, { id: `${Date.now()}-user`, role: "user", text: userText }]);
     setInput("");
-    setLoading(true);
+    setIsLoading(true);
 
-    const reply = await getAssistantReply({
-      question: trimmed,
-      pathname: location.pathname,
-      context: {
-        page: location.pathname,
-      },
-    });
-
-    setMessages((current) => [
-      ...current,
-      { id: `${Date.now()}-assistant`, role: "assistant", text: reply },
-    ]);
-    setLoading(false);
-  };
+    try {
+      const { message } = await getAIResponse(userText, history);
+      const aiMsg = { role: "assistant", content: message };
+      setHistory((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [
+        ...prev,
+        { id: `${Date.now()}-assistant`, role: "assistant", text: message },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { id: `${Date.now()}-assistant-error`, role: "assistant", text: "Something went wrong. Try again." },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <div className="fixed bottom-5 right-5 z-50">
@@ -102,9 +114,13 @@ const FloatingHelpWidget = () => {
                 {message.text}
               </div>
             ))}
-            {loading ? (
+            {isLoading ? (
               <div className="max-w-[88%] rounded-2xl bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
-                Thinking...
+                <div className="flex items-center gap-1">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
+                </div>
               </div>
             ) : null}
           </div>
@@ -115,7 +131,7 @@ const FloatingHelpWidget = () => {
                 <button
                   key={suggestion}
                   type="button"
-                  onClick={() => sendMessage(suggestion)}
+                  onClick={() => handleSend(suggestion)}
                   className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
                 >
                   {suggestion}
@@ -129,7 +145,7 @@ const FloatingHelpWidget = () => {
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
-                    sendMessage(input);
+                    handleSend();
                   }
                 }}
                 placeholder="Ask for help..."
@@ -137,8 +153,9 @@ const FloatingHelpWidget = () => {
               />
               <button
                 type="button"
-                onClick={() => sendMessage(input)}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                onClick={() => handleSend()}
+                disabled={isLoading}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
               >
                 Send
               </button>

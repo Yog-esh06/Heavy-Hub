@@ -1,91 +1,85 @@
 import {
+  addDoc,
+  arrayUnion,
   collection,
-  query,
-  where,
-  getDocs,
   doc,
   getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
-import { functions, db } from "../config/firebase";
-import { httpsCallable } from "firebase/functions";
+import { db } from "../config/firebase";
 
-/**
- * Create a new booking (calls Cloud Function)
- */
 export const createBooking = async (bookingData) => {
   try {
-    const createBookingFn = httpsCallable(functions, "createBooking");
+    const vehicleRef = doc(db, "vehicles", bookingData.vehicleId);
 
-    const result = await createBookingFn(bookingData);
+    const bookingRef = await addDoc(collection(db, "bookings"), {
+      ...bookingData,
+      status: "confirmed",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
 
-    return result.data;
+    const dates = generateDateRange(bookingData.startDate, bookingData.endDate);
+    await updateDoc(vehicleRef, {
+      bookedDates: arrayUnion(...dates),
+      isAvailable: false,
+      updatedAt: serverTimestamp(),
+    });
+
+    return bookingRef.id;
   } catch (error) {
     console.error("Error creating booking:", error);
     throw error;
   }
 };
 
-/**
- * Cancel a booking (calls Cloud Function)
- */
 export const cancelBooking = async (bookingId, cancellationReason) => {
   try {
-    const cancelBookingFn = httpsCallable(functions, "cancelBooking");
-
-    const result = await cancelBookingFn({
-      bookingId,
+    const bookingRef = doc(db, "bookings", bookingId);
+    await updateDoc(bookingRef, {
+      status: "cancelled",
       cancellationReason,
+      updatedAt: serverTimestamp(),
     });
 
-    return result.data;
+    return bookingId;
   } catch (error) {
     console.error("Error cancelling booking:", error);
     throw error;
   }
 };
 
-/**
- * Get all bookings for current user (as renter)
- */
 export const getUserBookingsAsRenter = async (userId) => {
   try {
-    const q = query(
-      collection(db, "bookings"),
-      where("renterId", "==", userId)
-    );
-
+    const q = query(collection(db, "bookings"), where("renterId", "==", userId));
     const snapshot = await getDocs(q);
-    const bookings = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const bookings = snapshot.docs.map((snapshotDoc) => ({
+      id: snapshotDoc.id,
+      ...snapshotDoc.data(),
+    }));
 
-    // Sort by date descending
-    return bookings.sort(
-      (a, b) => new Date(b.startDate) - new Date(a.startDate)
-    );
+    return bookings.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
   } catch (error) {
     console.error("Error fetching user bookings:", error);
     throw error;
   }
 };
 
-/**
- * Get all bookings for owner's vehicles
- */
 export const getOwnerIncomingBookings = async (ownerId) => {
   try {
-    const q = query(
-      collection(db, "bookings"),
-      where("ownerId", "==", ownerId)
-    );
-
+    const q = query(collection(db, "bookings"), where("ownerId", "==", ownerId));
     const snapshot = await getDocs(q);
-    const bookings = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const bookings = snapshot.docs.map((snapshotDoc) => ({
+      id: snapshotDoc.id,
+      ...snapshotDoc.data(),
+    }));
 
-    // Filter for pending/confirmed/active bookings
     return bookings
-      .filter((b) =>
-        ["pending", "confirmed", "active"].includes(b.status)
-      )
+      .filter((booking) => ["pending", "confirmed", "active"].includes(booking.status))
       .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
   } catch (error) {
     console.error("Error fetching owner bookings:", error);
@@ -93,9 +87,6 @@ export const getOwnerIncomingBookings = async (ownerId) => {
   }
 };
 
-/**
- * Get booking by ID
- */
 export const getBookingById = async (bookingId) => {
   try {
     const bookingRef = doc(db, "bookings", bookingId);
@@ -112,45 +103,32 @@ export const getBookingById = async (bookingId) => {
   }
 };
 
-/**
- * Confirm booking (owner accepts)
- */
 export const confirmBooking = async (bookingId) => {
   try {
     const bookingRef = doc(db, "bookings", bookingId);
     await updateDoc(bookingRef, {
       status: "confirmed",
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    return await getBookingById(bookingId);
+    return getBookingById(bookingId);
   } catch (error) {
     console.error("Error confirming booking:", error);
     throw error;
   }
 };
 
-/**
- * Get bookings for a driver
- */
 export const getDriverBookings = async (driverId) => {
   try {
-    const q = query(
-      collection(db, "bookings"),
-      where("driverId", "==", driverId)
-    );
-
+    const q = query(collection(db, "bookings"), where("driverId", "==", driverId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
   } catch (error) {
     console.error("Error fetching driver bookings:", error);
     throw error;
   }
 };
 
-/**
- * Get completed bookings for review
- */
 export const getCompletedBookings = async (userId, role = "renter") => {
   try {
     const field = role === "renter" ? "renterId" : "ownerId";
@@ -161,27 +139,37 @@ export const getCompletedBookings = async (userId, role = "renter") => {
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
   } catch (error) {
     console.error("Error fetching completed bookings:", error);
     throw error;
   }
 };
 
-/**
- * Update booking status
- */
 export const updateBookingStatus = async (bookingId, status) => {
   try {
     const bookingRef = doc(db, "bookings", bookingId);
     await updateDoc(bookingRef, {
       status,
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    return await getBookingById(bookingId);
+    return getBookingById(bookingId);
   } catch (error) {
     console.error("Error updating booking status:", error);
     throw error;
   }
 };
+
+function generateDateRange(startDate, endDate) {
+  const dates = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    dates.push(current.toISOString().split("T")[0]);
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+}

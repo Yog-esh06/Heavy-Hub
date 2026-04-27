@@ -1,53 +1,43 @@
 import {
+  addDoc,
   collection,
-  query,
-  where,
-  getDocs,
+  deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
   updateDoc,
-  deleteDoc,
+  where,
 } from "firebase/firestore";
-import { functions, db } from "../config/firebase";
-import { httpsCallable } from "firebase/functions";
+import { db } from "../config/firebase";
 
-/**
- * Create a new vehicle listing (calls Cloud Function)
- */
 export const createListing = async (listingData) => {
   try {
-    const createListingFn = httpsCallable(functions, "createListing");
+    const docRef = await addDoc(collection(db, "vehicles"), {
+      ...listingData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
 
-    const result = await createListingFn(listingData);
-
-    return result.data;
+    return { id: docRef.id };
   } catch (error) {
     console.error("Error creating listing:", error);
     throw error;
   }
 };
 
-/**
- * Get all listings for owner
- */
 export const getOwnerListings = async (ownerId) => {
   try {
-    const q = query(
-      collection(db, "vehicles"),
-      where("ownerId", "==", ownerId)
-    );
-
+    const q = query(collection(db, "vehicles"), where("ownerId", "==", ownerId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }));
   } catch (error) {
     console.error("Error fetching owner listings:", error);
     throw error;
   }
 };
 
-/**
- * Get listing by ID
- */
 export const getListingById = async (listingId) => {
   try {
     const vehicleRef = doc(db, "vehicles", listingId);
@@ -64,125 +54,96 @@ export const getListingById = async (listingId) => {
   }
 };
 
-/**
- * Update vehicle listing
- */
 export const updateListing = async (listingId, updates) => {
   try {
     const vehicleRef = doc(db, "vehicles", listingId);
     await updateDoc(vehicleRef, {
       ...updates,
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    return await getListingById(listingId);
+    return getListingById(listingId);
   } catch (error) {
     console.error("Error updating listing:", error);
     throw error;
   }
 };
 
-/**
- * Delete vehicle listing (calls Cloud Function)
- */
 export const deleteListing = async (listingId) => {
   try {
-    const deleteListingFn = httpsCallable(functions, "deleteListing");
-
-    const result = await deleteListingFn({ vehicleId: listingId });
-
-    return result.data;
+    await deleteDoc(doc(db, "vehicles", listingId));
+    return { success: true, listingId };
   } catch (error) {
     console.error("Error deleting listing:", error);
     throw error;
   }
 };
 
-/**
- * Toggle listing availability
- */
 export const toggleListingAvailability = async (listingId, isAvailable) => {
   try {
     const vehicleRef = doc(db, "vehicles", listingId);
     await updateDoc(vehicleRef, {
       isAvailable,
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    return await getListingById(listingId);
+    return getListingById(listingId);
   } catch (error) {
     console.error("Error toggling availability:", error);
     throw error;
   }
 };
 
-/**
- * Block dates for a listing
- */
 export const blockListingDates = async (listingId, dates) => {
   try {
     const vehicleRef = doc(db, "vehicles", listingId);
     const currentListing = await getListingById(listingId);
     const currentBlockedDates = currentListing.bookedDates || [];
-
-    // Merge new dates
     const uniqueDates = [...new Set([...currentBlockedDates, ...dates])];
 
     await updateDoc(vehicleRef, {
       bookedDates: uniqueDates,
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    return await getListingById(listingId);
+    return getListingById(listingId);
   } catch (error) {
     console.error("Error blocking dates:", error);
     throw error;
   }
 };
 
-/**
- * Unblock dates for a listing
- */
 export const unblockListingDates = async (listingId, dates) => {
   try {
     const vehicleRef = doc(db, "vehicles", listingId);
     const currentListing = await getListingById(listingId);
     const currentBlockedDates = currentListing.bookedDates || [];
-
-    // Remove dates
-    const updatedDates = currentBlockedDates.filter(
-      (date) => !dates.includes(date)
-    );
+    const updatedDates = currentBlockedDates.filter((date) => !dates.includes(date));
 
     await updateDoc(vehicleRef, {
       bookedDates: updatedDates,
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    return await getListingById(listingId);
+    return getListingById(listingId);
   } catch (error) {
     console.error("Error unblocking dates:", error);
     throw error;
   }
 };
 
-/**
- * Get listing statistics for owner
- */
 export const getListingStats = async (ownerId) => {
   try {
     const listings = await getOwnerListings(ownerId);
 
-    const stats = {
+    return {
       totalListings: listings.length,
-      activeListings: listings.filter((l) => l.status === "active").length,
-      soldListings: listings.filter((l) => l.status === "sold").length,
+      activeListings: listings.filter((listing) => listing.status === "active").length,
+      soldListings: listings.filter((listing) => listing.status === "sold").length,
       totalRevenue: 0,
       avgRating:
-        listings.reduce((sum, l) => sum + (l.rating || 0), 0) / listings.length || 0,
+        listings.reduce((sum, listing) => sum + (listing.rating || 0), 0) / listings.length || 0,
     };
-
-    return stats;
   } catch (error) {
     console.error("Error fetching listing stats:", error);
     throw error;

@@ -1,28 +1,46 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 
-const Badge = ({ children, variant = "default", size = "md" }) => {
-  const variantClasses = {
-    default: "bg-gray-200 text-gray-900",
-    success: "bg-green-100 text-green-800",
-    error: "bg-red-100 text-red-800",
-    warning: "bg-yellow-100 text-yellow-800",
-    info: "bg-blue-100 text-blue-800",
-    primary: "bg-green-600 text-white",
-  };
+const ImageUpload = ({ onUpload, multiple = false, single = false }) => {
+  const inputRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const sizeClasses = {
-    sm: "px-2 py-1 text-xs",
-    md: "px-3 py-1.5 text-sm",
-    lg: "px-4 py-2 text-base",
+  const allowMultiple = single ? false : multiple;
+
+  const handleChange = async (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (selectedFiles.length === 0 || typeof onUpload !== "function") {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await onUpload(allowMultiple ? selectedFiles : [selectedFiles[0]]);
+    } finally {
+      setIsLoading(false);
+      event.target.value = "";
+    }
   };
 
   return (
-    <span
-      className={`inline-block rounded-full font-semibold ${variantClasses[variant]} ${sizeClasses[size]}`}
-    >
-      {children}
-    </span>
+    <div className="space-y-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple={allowMultiple}
+        onChange={handleChange}
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={isLoading}
+        className="inline-flex items-center rounded-lg border border-dashed border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isLoading ? "Uploading..." : allowMultiple ? "Choose Images" : "Choose Image"}
+      </button>
+    </div>
   );
 };
 
-export default Badge;
+export default ImageUpload;
