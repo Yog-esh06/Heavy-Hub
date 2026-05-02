@@ -4,6 +4,62 @@ import { calculateHaversineDistance } from "../utils/distance";
 
 const cloneDemoVehicles = () => demoVehicles.map((vehicle) => ({ ...vehicle }));
 
+const createVehiclePlaceholderImage = (name, type) => {
+  const palette = {
+    tractor: "#16a34a",
+    harvester: "#0f766e",
+    jcb: "#f59e0b",
+    loader: "#7c3aed",
+    excavator: "#ea580c",
+    bulldozer: "#dc2626",
+    crane: "#2563eb",
+  };
+
+  const accent = palette[String(type || "").toLowerCase()] || "#4f46e5";
+  const label = String(type || "Equipment")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+      <rect width="1200" height="800" fill="#f3f4f6" />
+      <rect x="70" y="70" width="1060" height="660" rx="36" fill="${accent}" opacity="0.12" />
+      <rect x="120" y="540" width="960" height="90" rx="24" fill="${accent}" opacity="0.18" />
+      <circle cx="340" cy="610" r="72" fill="#1f2937" />
+      <circle cx="860" cy="610" r="72" fill="#1f2937" />
+      <circle cx="340" cy="610" r="32" fill="#9ca3af" />
+      <circle cx="860" cy="610" r="32" fill="#9ca3af" />
+      <rect x="250" y="380" width="520" height="120" rx="28" fill="${accent}" opacity="0.88" />
+      <rect x="720" y="330" width="140" height="170" rx="20" fill="${accent}" opacity="0.7" />
+      <rect x="760" y="250" width="28" height="130" rx="12" fill="#374151" />
+      <text x="120" y="185" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#111827">${name}</text>
+      <text x="120" y="255" font-family="Arial, sans-serif" font-size="30" fill="#374151">${label}</text>
+      <text x="120" y="690" font-family="Arial, sans-serif" font-size="28" fill="#4b5563">HeavyHub vehicle preview</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const sanitizeVehicleImages = (images, fallbackName, fallbackType) => {
+  const imageList = Array.isArray(images) ? images.filter(Boolean) : [];
+
+  if (imageList.length === 0) {
+    return [createVehiclePlaceholderImage(fallbackName, fallbackType)];
+  }
+
+  return imageList.map((image) => {
+    if (typeof image !== "string") {
+      return createVehiclePlaceholderImage(fallbackName, fallbackType);
+    }
+
+    const normalized = image.toLowerCase();
+    const looksRandomSeedImage =
+      normalized.includes("images.unsplash.com") || normalized.includes("source.unsplash.com");
+
+    return looksRandomSeedImage ? createVehiclePlaceholderImage(fallbackName, fallbackType) : image;
+  });
+};
+
 export const mapVehicleRecord = (row) => {
   if (!row) {
     return null;
@@ -26,6 +82,7 @@ export const mapVehicleRecord = (row) => {
     isVerified: row.is_verified,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    images: sanitizeVehicleImages(row.images, row.name, row.type),
     ownerPhone: row.owner?.phone || row.owner_phone || null,
     ownerName: row.owner?.display_name || row.owner_name || null,
     location: {
@@ -47,7 +104,7 @@ const toVehiclePayload = (vehicleData = {}) => ({
   model: vehicleData.model || null,
   year: vehicleData.year || null,
   description: vehicleData.description || null,
-  images: vehicleData.images || [],
+    images: sanitizeVehicleImages(vehicleData.images, vehicleData.name, vehicleData.type),
   location_lat: vehicleData.location_lat ?? vehicleData.location?.lat ?? null,
   location_lng: vehicleData.location_lng ?? vehicleData.location?.lng ?? null,
   location_address: vehicleData.location_address ?? vehicleData.location?.address ?? null,
@@ -74,6 +131,21 @@ const toVehiclePayload = (vehicleData = {}) => ({
 const matchesListingType = (vehicle, listingType) =>
   !listingType || vehicle.listingType === listingType || vehicle.listingType === "both";
 
+const matchesType = (vehicle, type) => {
+  if (!type) {
+    return true;
+  }
+
+  const normalizedVehicleType = String(vehicle.type || "").toLowerCase();
+  const normalizedFilterType = String(type).toLowerCase();
+
+  if (normalizedFilterType === "jcb") {
+    return normalizedVehicleType === "jcb" || normalizedVehicleType === "loader";
+  }
+
+  return normalizedVehicleType === normalizedFilterType;
+};
+
 const filterLocally = (source, filters = {}) => {
   let results = [...source];
 
@@ -82,7 +154,7 @@ const filterLocally = (source, filters = {}) => {
   }
 
   if (filters.type) {
-    results = results.filter((vehicle) => String(vehicle.type || "").toLowerCase() === String(filters.type).toLowerCase());
+    results = results.filter((vehicle) => matchesType(vehicle, filters.type));
   }
 
   if (filters.minPrice != null || filters.maxPrice != null) {
@@ -139,11 +211,10 @@ export async function getVehicles(filters = {}) {
 
   let query = supabase.from("vehicles").select("*, owner:users(id, display_name, phone)").eq("status", "active");
 
-  if (filters.type) query = query.eq("type", String(filters.type).toLowerCase());
-  if (filters.listingType && filters.listingType !== "all") query = query.eq("listing_type", filters.listingType);
+  if (filters.type && String(filters.type).toLowerCase() !== "jcb") {
+    query = query.eq("type", String(filters.type).toLowerCase());
+  }
   if (filters.isAvailable) query = query.eq("is_available", true);
-  if (filters.minPrice) query = query.gte("price_per_day", filters.minPrice);
-  if (filters.maxPrice) query = query.lte("price_per_day", filters.maxPrice);
   if (filters.driverAvailable) query = query.eq("driver_available", true);
   if (filters.ownerId) query = query.eq("owner_id", filters.ownerId);
   if (filters.limit) query = query.limit(filters.limit);
@@ -233,8 +304,9 @@ export async function searchVehicles(queryText, filters = {}) {
       `name.ilike.%${queryText}%,brand.ilike.%${queryText}%,description.ilike.%${queryText}%,location_address.ilike.%${queryText}%`
     );
 
-  if (filters.type) query = query.eq("type", String(filters.type).toLowerCase());
-  if (filters.listingType) query = query.eq("listing_type", filters.listingType);
+  if (filters.type && String(filters.type).toLowerCase() !== "jcb") {
+    query = query.eq("type", String(filters.type).toLowerCase());
+  }
 
   const { data, error } = await query;
   if (error) {

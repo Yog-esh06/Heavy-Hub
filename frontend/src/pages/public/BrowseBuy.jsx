@@ -7,14 +7,15 @@ import { useVehicles } from "../../hooks/useVehicles";
 
 const BrowseBuy = () => {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState({
+  const baseFilters = {
     listingType: "sale",
     type: "",
     minPrice: undefined,
     maxPrice: undefined,
     location: null,
     radius: 50,
-  });
+  };
+  const [filters, setFilters] = useState(baseFilters);
   const [sortBy, setSortBy] = useState("price_asc");
   const [viewMode, setViewMode] = useState("grid");
 
@@ -46,9 +47,7 @@ const BrowseBuy = () => {
       <div className="flex flex-col gap-8 lg:flex-row">
         <aside className="lg:w-1/4">
           <VehicleFilters
-            onApplyFilters={(newFilters) =>
-              setFilters((current) => ({ ...current, ...newFilters, listingType: "sale" }))
-            }
+            onApplyFilters={(newFilters) => setFilters({ ...baseFilters, ...newFilters })}
           />
         </aside>
 

@@ -9,8 +9,7 @@ const SearchResults = () => {
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const type = searchParams.get("type") || "";
-
-  const [filters, setFilters] = useState({
+  const baseFilters = {
     listingType: type === "rent" ? "rent" : type === "sale" ? "sale" : "",
     searchQuery: query,
     type: "",
@@ -19,7 +18,9 @@ const SearchResults = () => {
     location: null,
     radius: 50,
     driverAvailable: false,
-  });
+  };
+
+  const [filters, setFilters] = useState(baseFilters);
   const [sortBy, setSortBy] = useState("price_asc");
   const [viewMode, setViewMode] = useState("grid");
 
@@ -50,7 +51,7 @@ const SearchResults = () => {
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col gap-8 lg:flex-row">
         <aside className="lg:w-1/4">
-          <VehicleFilters onApplyFilters={(newFilters) => setFilters((current) => ({ ...current, ...newFilters }))} />
+          <VehicleFilters onApplyFilters={(newFilters) => setFilters({ ...baseFilters, ...newFilters })} />
         </aside>
 
         <main className="lg:w-3/4">

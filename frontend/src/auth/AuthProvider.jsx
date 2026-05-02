@@ -3,7 +3,9 @@ import { isSupabaseConfigured, supabase } from "../config/supabase";
 import {
   createUserProfile,
   getUserProfile,
+  signInWithEmail as signInWithEmailService,
   signInWithGoogle as signInWithGoogleService,
+  signUpWithEmail as signUpWithEmailService,
   signOut as signOutService,
   switchActiveRole as switchActiveRoleService,
   updateUserRoles as updateUserRolesService,
@@ -139,7 +141,9 @@ export function AuthProvider({ children }) {
     error,
     isAuthenticated: Boolean(user),
     isConfigured: isSupabaseConfigured,
+    signInWithEmail: signInWithEmailService,
     signInWithGoogle: signInWithGoogleService,
+    signUpWithEmail: signUpWithEmailService,
     signOutUser: signOutService,
     updateRoles: async (nextRoles) => {
       if (!user?.id) {

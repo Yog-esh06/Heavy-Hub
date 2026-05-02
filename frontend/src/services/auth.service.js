@@ -23,6 +23,48 @@ export async function signInWithGoogle() {
   return data;
 }
 
+export async function signInWithEmail(email, password) {
+  requireSupabase();
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function signUpWithEmail(email, password, displayName = "") {
+  requireSupabase();
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: displayName,
+      },
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (data.user && data.session) {
+    await createUserProfile(data.user);
+  }
+
+  return {
+    ...data,
+    requiresEmailConfirmation: !data.session,
+  };
+}
+
 export async function signOut() {
   if (!isSupabaseConfigured) {
     return;
