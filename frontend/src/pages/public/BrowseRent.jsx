@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import NearbyVehicles from "../../components/maps/NearbyVehicles";
 import VehicleCard from "../../components/vehicle/VehicleCard";
 import VehicleFilters from "../../components/vehicle/VehicleFilters";
+import { useGeolocation } from "../../hooks/useGeolocation";
 import { useVehicles } from "../../hooks/useVehicles";
 
 const BrowseRent = () => {
@@ -19,8 +20,13 @@ const BrowseRent = () => {
   const [filters, setFilters] = useState(baseFilters);
   const [sortBy, setSortBy] = useState("price_asc");
   const [viewMode, setViewMode] = useState("grid");
+  const { location, getLocation } = useGeolocation();
 
   const { vehicles, loading, error } = useVehicles(filters);
+
+  useEffect(() => {
+    getLocation();
+  }, [getLocation]);
 
   const sortedVehicles = [...vehicles].sort((a, b) => {
     switch (sortBy) {
@@ -98,7 +104,7 @@ const BrowseRent = () => {
               ))}
             </div>
           ) : (
-            <NearbyVehicles vehicles={sortedVehicles} center={filters.location || { lat: 28.6139, lng: 77.209 }} />
+            <NearbyVehicles vehicles={sortedVehicles} center={location || filters.location || { lat: 28.6139, lng: 77.209 }} />
           )}
         </main>
       </div>

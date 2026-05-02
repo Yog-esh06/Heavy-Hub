@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../config/supabase";
+import { createDemoBookings } from "../data/demoProfiles";
 import { assignNearestDriver } from "./drivers.service";
 
 function mapBookingRecord(row) {
@@ -42,6 +43,7 @@ function mapBookingRecord(row) {
     paymentStatus: row.payment_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    completedAt: row.completed_at || row.updated_at || null,
     vehicle: row.vehicle
       ? {
           ...row.vehicle,
@@ -74,6 +76,16 @@ function ensureConfigured() {
   if (!isSupabaseConfigured) {
     throw new Error("Configure Supabase in frontend/.env to use bookings.");
   }
+}
+
+function resolveDemoPerspective(userId, filters = {}) {
+  if (filters.ownerId === userId) return "owner";
+  if (filters.driverId === userId) return "driver";
+  return "renter";
+}
+
+function getDemoBookings(userId, filters = {}) {
+  return createDemoBookings(userId, resolveDemoPerspective(userId, filters));
 }
 
 export async function createBooking(bookingData) {
@@ -218,7 +230,13 @@ export async function cancelBooking(bookingId, reason) {
 }
 
 export async function getUserBookings(userId, filters = {}) {
-  ensureConfigured();
+  if (!userId) {
+    return [];
+  }
+
+  if (!isSupabaseConfigured) {
+    return getDemoBookings(userId, filters);
+  }
 
   let query = supabase
     .from("bookings")
@@ -230,7 +248,8 @@ export async function getUserBookings(userId, filters = {}) {
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).map(mapBookingRecord);
+  const bookings = (data || []).map(mapBookingRecord);
+  return bookings.length > 0 ? bookings : getDemoBookings(userId, filters);
 }
 
 export async function getUserBookingsAsRenter(userId) {
@@ -249,7 +268,14 @@ export async function getDriverBookings(driverId) {
 }
 
 export async function getBookingById(bookingId) {
-  ensureConfigured();
+  if (!isSupabaseConfigured) {
+    const demoBookings = [
+      ...createDemoBookings("demo-renter-profile", "renter"),
+      ...createDemoBookings("demo-owner-profile", "owner"),
+      ...createDemoBookings("demo-driver-profile", "driver"),
+    ];
+    return demoBookings.find((booking) => booking.id === bookingId) || null;
+  }
   const { data, error } = await supabase
     .from("bookings")
     .select("*, vehicle:vehicles(id, name, images, type), driver_profile:drivers(id, user_id, name, phone, photo_url)")

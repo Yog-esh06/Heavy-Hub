@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { GOOGLE_MAPS_API_KEY, loadGoogleMapsAPI } from "../../config/maps";
 import { calculateHaversineDistance, formatDistance } from "../../utils/distance";
 
 const NearbyVehicles = ({ vehicles = [], center = null }) => {
-  const [view, setView] = useState("list");
+  const [view, setView] = useState("proximity");
+  const [mapError, setMapError] = useState("");
+  const mapRef = useRef(null);
   const items = vehicles
     .map((vehicle) => {
       const location = vehicle.location || {};
@@ -38,6 +41,117 @@ const NearbyVehicles = ({ vehicles = [], center = null }) => {
   }, [items]);
 
   const maxCount = Math.max(...regionHeat.map((item) => item.count), 1);
+  const mappableVehicles = items.filter((vehicle) => vehicle.location?.lat != null && vehicle.location?.lng != null);
+
+  useEffect(() => {
+    if (
+      !mapRef.current ||
+      center?.lat == null ||
+      center?.lng == null ||
+      !["proximity", "heatmap"].includes(view)
+    ) {
+      return undefined;
+    }
+
+    if (!GOOGLE_MAPS_API_KEY) {
+      setMapError("Add a Google Maps key to render the live nearby map.");
+      return undefined;
+    }
+
+    let active = true;
+    let markers = [];
+    let heatmapLayer = null;
+
+    loadGoogleMapsAPI()
+      .then(() => {
+        if (!active || !window.google?.maps || !mapRef.current) {
+          return;
+        }
+
+        setMapError("");
+
+        const googleMaps = window.google.maps;
+        const map = new googleMaps.Map(mapRef.current, {
+          center: { lat: center.lat, lng: center.lng },
+          zoom: 10,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        });
+
+        const bounds = new googleMaps.LatLngBounds();
+        bounds.extend({ lat: center.lat, lng: center.lng });
+
+        markers.push(
+          new googleMaps.Marker({
+            map,
+            position: { lat: center.lat, lng: center.lng },
+            title: "Your location",
+            icon: {
+              path: googleMaps.SymbolPath.CIRCLE,
+              fillColor: "#f59e0b",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+              scale: 8,
+            },
+          })
+        );
+
+        mappableVehicles.forEach((vehicle) => {
+          const position = { lat: vehicle.location.lat, lng: vehicle.location.lng };
+          bounds.extend(position);
+
+          const marker = new googleMaps.Marker({
+            map: view === "proximity" ? map : null,
+            position,
+            title: vehicle.name,
+          });
+
+          if (view === "proximity") {
+            const infoWindow = new googleMaps.InfoWindow({
+              content: `
+                <div style="max-width:220px">
+                  <strong>${vehicle.name}</strong><br />
+                  <span>${vehicle.location?.address || "Location not available"}</span><br />
+                  <span>${vehicle.distance == null ? "Distance unavailable" : formatDistance(vehicle.distance)}</span>
+                </div>
+              `,
+            });
+
+            marker.addListener("click", () => infoWindow.open({ anchor: marker, map }));
+            markers.push(marker);
+          }
+        });
+
+        if (view === "heatmap" && googleMaps.visualization) {
+          heatmapLayer = new googleMaps.visualization.HeatmapLayer({
+            data: mappableVehicles.map(
+              (vehicle) => new googleMaps.LatLng(vehicle.location.lat, vehicle.location.lng)
+            ),
+            radius: 35,
+          });
+          heatmapLayer.setMap(map);
+        }
+
+        if (mappableVehicles.length > 0) {
+          map.fitBounds(bounds);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setMapError(error.message || "Failed to load Google Maps.");
+        }
+      });
+
+    return () => {
+      active = false;
+      markers.forEach((marker) => marker.setMap(null));
+      if (heatmapLayer) {
+        heatmapLayer.setMap(null);
+      }
+    };
+  }, [center?.lat, center?.lng, mappableVehicles, view]);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -45,11 +159,11 @@ const NearbyVehicles = ({ vehicles = [], center = null }) => {
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Nearby vehicles</h2>
           <p className="text-sm text-gray-600">
-            Explore list, spread, and heat-style density views.
+            See rental options around the user with distance-aware map and heatmap views.
           </p>
         </div>
         <div className="flex rounded-full border border-gray-200 bg-slate-50 p-1 text-xs">
-          {["list", "spread", "heatmap"].map((mode) => (
+          {["list", "proximity", "heatmap"].map((mode) => (
             <button
               key={mode}
               type="button"
@@ -87,33 +201,28 @@ const NearbyVehicles = ({ vehicles = [], center = null }) => {
         </div>
       ) : null}
 
-      {items.length > 0 && view === "spread" ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {items.map((vehicle, index) => {
-            const left = 10 + ((index * 17) % 70);
-            const top = 12 + ((index * 23) % 65);
-            return (
-              <div key={vehicle.id} className="rounded-2xl border border-gray-200 bg-slate-50 p-4">
-                <div className="relative h-44 overflow-hidden rounded-xl bg-slate-900">
-                  <div
-                    className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-400 shadow-lg"
-                    style={{ left: `${left}%`, top: `${top}%` }}
-                  />
-                  <div className="absolute inset-x-3 bottom-3 rounded-lg bg-white/90 px-3 py-2 text-xs text-slate-700">
-                    {vehicle.name}
-                    <div className="mt-1 text-slate-500">
-                      {vehicle.distance == null ? "Distance unavailable" : formatDistance(vehicle.distance)}
-                    </div>
-                  </div>
-                </div>
+      {items.length > 0 && view === "proximity" ? (
+        <div className="space-y-3">
+          <div ref={mapRef} className="h-[420px] overflow-hidden rounded-2xl border border-gray-200 bg-slate-100" />
+          {mapError ? <p className="text-sm text-amber-700">{mapError}</p> : null}
+          <div className="grid gap-3 md:grid-cols-2">
+            {items.slice(0, 6).map((vehicle) => (
+              <div key={vehicle.id} className="rounded-xl border border-gray-200 p-3">
+                <p className="font-medium text-slate-900">{vehicle.name}</p>
+                <p className="text-sm text-slate-600">{vehicle.location?.address || "Address not available"}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {vehicle.distance == null ? "Distance unavailable" : formatDistance(vehicle.distance)}
+                </p>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       ) : null}
 
       {items.length > 0 && view === "heatmap" ? (
         <div className="space-y-3">
+          <div ref={mapRef} className="h-[420px] overflow-hidden rounded-2xl border border-gray-200 bg-slate-100" />
+          {mapError ? <p className="text-sm text-amber-700">{mapError}</p> : null}
           {regionHeat.map((region) => (
             <div key={region.label} className="rounded-xl border border-gray-200 p-4">
               <div className="mb-2 flex items-center justify-between gap-3">

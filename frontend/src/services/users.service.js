@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../config/supabase";
+import { demoUsers } from "../data/demoProfiles";
 
 const mapUserRecord = (row) => {
   if (!row) return null;
@@ -24,12 +25,13 @@ const mapUserRecord = (row) => {
 
 export async function getAllUsers() {
   if (!isSupabaseConfigured) {
-    return [];
+    return demoUsers;
   }
 
   const { data, error } = await supabase.from("users").select("*").order("created_at", { ascending: false });
   if (error) throw error;
-  return (data || []).map(mapUserRecord);
+  const users = (data || []).map(mapUserRecord);
+  return users.length > 0 ? users : demoUsers;
 }
 
 export async function updateUserProfile(userId, updates) {
@@ -57,7 +59,7 @@ export async function updateUserProfile(userId, updates) {
 
 export async function getUserById(userId) {
   if (!isSupabaseConfigured || !userId) {
-    return null;
+    return demoUsers.find((user) => user.id === userId || user.uid === userId) || null;
   }
 
   const { data, error } = await supabase.from("users").select("*").eq("id", userId).single();

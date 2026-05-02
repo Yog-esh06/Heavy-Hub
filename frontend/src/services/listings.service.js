@@ -1,9 +1,10 @@
 import { isSupabaseConfigured, supabase } from "../config/supabase";
+import { createDemoOwnerListings } from "../data/demoProfiles";
 import { createVehicle, deleteVehicle, getVehicleById, mapVehicleRecord, toVehiclePayload, updateVehicle } from "./vehicles.service";
 
 export async function getOwnerListings(ownerId) {
   if (!isSupabaseConfigured) {
-    return [];
+    return createDemoOwnerListings(ownerId);
   }
 
   const { data, error } = await supabase
@@ -13,7 +14,8 @@ export async function getOwnerListings(ownerId) {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(mapVehicleRecord);
+  const listings = (data || []).map(mapVehicleRecord);
+  return listings.length > 0 ? listings : createDemoOwnerListings(ownerId);
 }
 
 export async function createListing(listingData) {

@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../config/supabase";
+import { createDemoDriverProfile } from "../data/demoProfiles";
 import { calculateHaversineDistance } from "../utils/distance";
 
 const mapDriverRecord = (row) => {
@@ -75,17 +76,17 @@ export async function applyAsDriver(userOrDriverData, maybeDriverData) {
 
 export async function getDriverProfile(userId) {
   if (!isSupabaseConfigured || !userId) {
-    return null;
+    return createDemoDriverProfile(userId);
   }
 
   const { data, error } = await supabase.from("drivers").select("*").eq("user_id", userId).maybeSingle();
   if (error && error.code !== "PGRST116") throw error;
-  return mapDriverRecord(data);
+  return data ? mapDriverRecord(data) : createDemoDriverProfile(userId);
 }
 
 export async function getDriverById(driverId) {
   if (!isSupabaseConfigured || !driverId) {
-    return null;
+    return createDemoDriverProfile(driverId);
   }
 
   const { data, error } = await supabase
@@ -95,7 +96,7 @@ export async function getDriverById(driverId) {
     .limit(1)
     .maybeSingle();
   if (error && error.code !== "PGRST116") throw error;
-  return mapDriverRecord(data);
+  return data ? mapDriverRecord(data) : createDemoDriverProfile(driverId);
 }
 
 export async function updateDriverAvailability(userIdOrDriverId, isAvailable) {
@@ -144,12 +145,13 @@ export async function assignNearestDriver(pickupLat, pickupLng) {
 
 export async function getApprovedDrivers() {
   if (!isSupabaseConfigured) {
-    return [];
+    return [createDemoDriverProfile("demo-driver-profile")];
   }
 
   const { data, error } = await supabase.from("drivers").select("*").eq("application_status", "approved");
   if (error) throw error;
-  return (data || []).map(mapDriverRecord);
+  const drivers = (data || []).map(mapDriverRecord);
+  return drivers.length > 0 ? drivers : [createDemoDriverProfile("demo-driver-profile")];
 }
 
 export async function getNearbyDrivers(location, radiusKm = 50) {
@@ -192,11 +194,12 @@ export async function updateDriverCurrentJob(userId, bookingId) {
 
 export async function getAllDrivers() {
   if (!isSupabaseConfigured) {
-    return [];
+    return [createDemoDriverProfile("demo-driver-profile")];
   }
   const { data, error } = await supabase.from("drivers").select("*");
   if (error) throw error;
-  return (data || []).map(mapDriverRecord);
+  const drivers = (data || []).map(mapDriverRecord);
+  return drivers.length > 0 ? drivers : [createDemoDriverProfile("demo-driver-profile")];
 }
 
 export async function getPendingDriverApplications() {

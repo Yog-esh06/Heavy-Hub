@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { GOOGLE_MAPS_API_KEY, loadGoogleMapsAPI } from "../../config/maps";
 
 const buildMapsUrl = (location) => {
   if (location?.lat != null && location?.lng != null) {
@@ -14,6 +15,8 @@ const buildMapsUrl = (location) => {
 
 const MapView = ({ location, markerTitle = "Location", className = "" }) => {
   const [mode, setMode] = useState("details");
+  const [mapError, setMapError] = useState("");
+  const mapRef = useRef(null);
   const mapsUrl = buildMapsUrl(location);
   const signalStrength = useMemo(() => {
     if (location?.lat == null || location?.lng == null) {
@@ -23,6 +26,51 @@ const MapView = ({ location, markerTitle = "Location", className = "" }) => {
     const base = Math.abs(Number(location.lat)) + Math.abs(Number(location.lng));
     return Math.max(18, Math.min(92, Math.round((base % 70) + 20)));
   }, [location?.lat, location?.lng]);
+
+  useEffect(() => {
+    if (mode !== "details" || !mapRef.current || location?.lat == null || location?.lng == null) {
+      return undefined;
+    }
+
+    if (!GOOGLE_MAPS_API_KEY) {
+      setMapError("Add a Google Maps key to render the live map.");
+      return undefined;
+    }
+
+    let active = true;
+
+    loadGoogleMapsAPI()
+      .then(() => {
+        if (!active || !window.google?.maps || !mapRef.current) {
+          return;
+        }
+
+        setMapError("");
+        const googleMaps = window.google.maps;
+        const map = new googleMaps.Map(mapRef.current, {
+          center: { lat: location.lat, lng: location.lng },
+          zoom: 13,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        });
+
+        new googleMaps.Marker({
+          map,
+          position: { lat: location.lat, lng: location.lng },
+          title: markerTitle,
+        });
+      })
+      .catch((error) => {
+        if (active) {
+          setMapError(error.message || "Failed to load Google Maps.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [location?.lat, location?.lng, markerTitle, mode]);
 
   return (
     <div className={`overflow-hidden rounded-xl border border-gray-200 bg-white ${className}`}>
@@ -49,6 +97,10 @@ const MapView = ({ location, markerTitle = "Location", className = "" }) => {
       <div className="space-y-4 p-4 text-sm text-gray-700">
         {mode === "details" ? (
           <>
+            {location?.lat != null && location?.lng != null ? (
+              <div ref={mapRef} className="h-56 overflow-hidden rounded-2xl border border-gray-200 bg-slate-100" />
+            ) : null}
+            {mapError ? <p className="text-xs text-amber-700">{mapError}</p> : null}
             <p>{location?.address || "Address not available yet."}</p>
             <div className="grid grid-cols-2 gap-3 text-xs text-gray-500">
               <div>
