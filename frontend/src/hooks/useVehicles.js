@@ -1,103 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
-import * as vehiclesService from "../services/vehicles.service";
+import { useEffect, useState } from "react";
+import { getVehicles, searchVehicles } from "../services/vehicles.service";
 
-export const useVehicles = (initialFilters = null) => {
+export function useVehicles(filters = {}) {
   const [vehicles, setVehicles] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchVehicles = useCallback(async (listingType = "rent") => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const data =
-        listingType === "sale"
-          ? await vehiclesService.getVehiclesForSale()
-          : await vehiclesService.getVehiclesForRent();
-
-      setVehicles(data);
-      return data;
-    } catch (err) {
-      setError(err.message);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const filterVehicles = useCallback(async (filters) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const results = await vehiclesService.filterVehicles(filters);
-      setVehicles(results);
-      return results;
-    } catch (err) {
-      setError(err.message);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const getVehicle = useCallback(async (vehicleId) => {
-    try {
-      setLoading(true);
-      setError(null);
-      return await vehiclesService.getVehicleById(vehicleId);
-    } catch (err) {
-      setError(err.message);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const searchVehicles = useCallback(async (searchTerm) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const results = await vehiclesService.searchVehicles(searchTerm);
-      setVehicles(results);
-      return results;
-    } catch (err) {
-      setError(err.message);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const filtersKey = JSON.stringify(initialFilters || {});
-
   useEffect(() => {
-    if (!initialFilters) {
-      fetchVehicles();
-      return;
-    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
 
-    const hasActiveFilters = Object.entries(initialFilters).some(([, value]) => {
-      if (value == null) return false;
-      if (typeof value === "string") return value.trim() !== "";
-      if (typeof value === "boolean") return value;
-      return true;
-    });
+    const request = filters.query
+      ? searchVehicles(filters.query, filters)
+      : getVehicles(filters);
 
-    if (hasActiveFilters) {
-      filterVehicles(initialFilters);
-    } else {
-      fetchVehicles(initialFilters.listingType || "rent");
-    }
-  }, [fetchVehicles, filterVehicles, filtersKey]);
+    request
+      .then((data) => {
+        if (!cancelled) setVehicles(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  return {
-    vehicles,
-    loading,
-    error,
-    fetchVehicles,
-    filterVehicles,
-    getVehicle,
-    searchVehicles,
-  };
-};
+    return () => {
+      cancelled = true;
+    };
+  }, [JSON.stringify(filters)]);
+
+  return { vehicles, loading, error, setVehicles };
+}

@@ -1,7 +1,9 @@
 import { Route, Routes } from "react-router-dom";
+import FloatingHelpWidget from "./components/assistant/FloatingHelpWidget";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import RoleRoute from "./auth/RoleRoute";
 import LoginPage from "./pages/auth/LoginPage";
+import AuthCallback from "./pages/auth/AuthCallback";
 import DashboardRouter from "./pages/dashboard/DashboardRouter";
 import AdminDashboard from "./pages/dashboard/admin/AdminDashboard";
 import ManageListings from "./pages/dashboard/admin/ManageListings";
@@ -16,7 +18,6 @@ import MyListings from "./pages/dashboard/owner/MyListings";
 import BookingDetail from "./pages/dashboard/renter/BookingDetail";
 import Cart from "./pages/dashboard/renter/Cart";
 import MyBookings from "./pages/dashboard/renter/MyBookings";
-import FloatingHelpWidget from "./components/assistant/FloatingHelpWidget";
 import BrowseBuy from "./pages/public/BrowseBuy";
 import BrowseRent from "./pages/public/BrowseRent";
 import LandingPage from "./pages/public/LandingPage";
@@ -33,6 +34,7 @@ function App() {
         <Route path="/vehicle/:vehicleId" element={<VehicleDetail />} />
         <Route path="/search" element={<SearchResults />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardRouter />} />

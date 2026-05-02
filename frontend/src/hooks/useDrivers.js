@@ -7,81 +7,49 @@ export const useDrivers = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch nearby drivers
-  const fetchNearbyDrivers = useCallback(
-    async (location, radiusKm = 50) => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const data = await driversService.getNearbyDrivers(location, radiusKm);
-        setDrivers(data);
-      } catch (err) {
-        console.error("Error fetching drivers:", err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  // Get driver details
-  const getDriver = useCallback(async (driverId) => {
+  const fetchNearbyDrivers = useCallback(async (location, radiusKm = 50) => {
     try {
       setLoading(true);
       setError(null);
-
-      const driver = await driversService.getDriverById(driverId);
-      setSelectedDriver(driver);
-      return driver;
+      const data = await driversService.getNearbyDrivers(location, radiusKm);
+      setDrivers(data);
+      return data;
     } catch (err) {
-      console.error("Error fetching driver:", err);
       setError(err.message);
+      return [];
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Assign nearest driver
-  const assignNearestDriver = useCallback(
-    async (pickupLocation, vehicleType, startDate) => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const result = await driversService.assignNearestDriver(
-          pickupLocation,
-          vehicleType,
-          startDate
-        );
-
-        if (result.success && result.driverId) {
-          setSelectedDriver(result.driver);
-        }
-
-        return result;
-      } catch (err) {
-        console.error("Error assigning driver:", err);
-        setError(err.message);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  // Apply as driver
-  const applyAsDriver = useCallback(async (driverData) => {
+  const getDriver = useCallback(async (driverId) => {
     try {
       setLoading(true);
       setError(null);
+      const driver = await driversService.getDriverById(driverId);
+      setSelectedDriver(driver);
+      return driver;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-      const result = await driversService.applyAsDriver(driverData);
+  const assignNearestDriver = useCallback(async (pickupLocation, vehicleType, startDate) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await driversService.assignNearestDriver(
+        pickupLocation?.lat,
+        pickupLocation?.lng,
+        startDate,
+        vehicleType
+      );
+      setSelectedDriver(result || null);
       return result;
     } catch (err) {
-      console.error("Error applying as driver:", err);
       setError(err.message);
       throw err;
     } finally {
@@ -89,17 +57,27 @@ export const useDrivers = () => {
     }
   }, []);
 
-  // Get application status
+  const applyAsDriver = useCallback(async (driverData) => {
+    try {
+      setLoading(true);
+      setError(null);
+      return await driversService.applyAsDriver(driverData);
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const getApplicationStatus = useCallback(async (userId) => {
     try {
       setLoading(true);
       setError(null);
-
-      const status = await driversService.getDriverApplicationStatus(userId);
-      return status;
+      return await driversService.getDriverApplicationStatus(userId);
     } catch (err) {
-      console.error("Error fetching application status:", err);
       setError(err.message);
+      return null;
     } finally {
       setLoading(false);
     }

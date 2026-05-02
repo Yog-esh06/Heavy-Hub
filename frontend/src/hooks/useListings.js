@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../auth/useAuth";
 import * as listingsService from "../services/listings.service";
 
@@ -9,7 +9,7 @@ export const useListings = (options = {}) => {
   const [error, setError] = useState(null);
 
   const fetchListings = useCallback(async () => {
-    const ownerId = options.ownerId || user?.uid;
+    const ownerId = options.ownerId || user?.id || user?.uid;
     if (!ownerId) return [];
 
     try {
@@ -24,7 +24,11 @@ export const useListings = (options = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [options.ownerId, user?.uid]);
+  }, [options.ownerId, user?.id, user?.uid]);
+
+  useEffect(() => {
+    fetchListings();
+  }, [fetchListings]);
 
   const createListing = useCallback(
     async (listingData) => {
@@ -34,7 +38,7 @@ export const useListings = (options = {}) => {
       try {
         const result = await listingsService.createListing({
           ...listingData,
-          ownerId: user.uid,
+          ownerId: user.id || user.uid,
         });
         await fetchListings();
         return result;
@@ -84,6 +88,7 @@ export const useListings = (options = {}) => {
     listings,
     loading,
     error,
+    setListings,
     fetchListings,
     refetch: fetchListings,
     createListing,

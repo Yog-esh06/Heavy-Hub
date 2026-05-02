@@ -1,103 +1,113 @@
-// frontend/src/pages/dashboard/admin/ManageUsers.jsx
-import { useState, useEffect } from 'react';
-import { db } from '../../../config/firebase';
-import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { useEffect, useState } from "react";
+import { deleteListing, updateListing } from "../../../services/listings.service";
+import { getVehicles } from "../../../services/vehicles.service";
 
-const ManageUsers = () => {
-  const [users, setUsers] = useState([]);
+const ManageListings = () => {
+  const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [updating, setUpdating] = useState(null);
+  const [activeTab, setActiveTab] = useState("all");
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchListings = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'users'));
-        const usersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setUsers(usersData);
+        const allListings = await getVehicles({});
+        let filtered = allListings;
+        if (activeTab === "pending") {
+          filtered = allListings.filter((listing) => !listing.isVerified);
+        } else if (activeTab === "reported") {
+          filtered = allListings.filter((listing) => Number(listing.reportCount || 0) > 0);
+        }
+        setListings(filtered);
       } catch (err) {
         console.error(err);
-        alert('Failed to load users');
+        alert("Failed to load listings");
       } finally {
         setLoading(false);
       }
     };
-    fetchUsers();
-  }, []);
+    fetchListings();
+  }, [activeTab]);
 
-  const handleRoleChange = async (userId, newRole) => {
-    setUpdating(userId);
+  const handleVerifyToggle = async (listingId, currentStatus) => {
     try {
-      await updateDoc(doc(db, 'users', userId), { role: newRole });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-      alert('Role updated');
+      const updated = await updateListing(listingId, { isVerified: !currentStatus });
+      setListings((prev) => prev.map((listing) => (listing.id === listingId ? updated : listing)));
+      alert(`Listing ${!currentStatus ? "verified" : "unverified"}`);
     } catch (err) {
-      alert('Failed to update role');
-    } finally {
-      setUpdating(null);
+      alert("Failed to update");
     }
   };
 
-  const filteredUsers = users.filter(u =>
-    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.displayName?.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleDelete = async (listingId) => {
+    if (!confirm("Delete this listing permanently?")) return;
+    try {
+      await deleteListing(listingId);
+      setListings((prev) => prev.filter((listing) => listing.id !== listingId));
+      alert("Listing deleted");
+    } catch (err) {
+      alert(err.message || "Failed to delete");
+    }
+  };
 
   if (loading) return <div className="container mx-auto px-4 py-8 text-center">Loading...</div>;
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Manage Users</h1>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by name or email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full md:w-80 border rounded p-2"
-        />
+      <h1 className="text-2xl font-bold mb-6">Manage Listings</h1>
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="flex space-x-4">
+          {["all", "pending", "reported"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`py-2 px-3 text-sm font-medium capitalize ${
+                activeTab === tab ? "border-b-2 border-blue-500 text-blue-600" : "text-gray-500"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
       </div>
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Listing Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {filteredUsers.map(user => (
-              <tr key={user.id}>
-                <td className="px-4 py-3 text-sm">{user.displayName || 'N/A'}</td>
-                <td className="px-4 py-3 text-sm">{user.email}</td>
+            {listings.map((listing) => (
+              <tr key={listing.id}>
+                <td className="px-4 py-3 text-sm">{listing.name}</td>
+                <td className="px-4 py-3 text-sm">{listing.ownerName || listing.ownerId}</td>
+                <td className="px-4 py-3 text-sm">{listing.type}</td>
+                <td className="px-4 py-3 text-sm capitalize">{listing.listingType}</td>
                 <td className="px-4 py-3 text-sm">
-                  <select
-                    value={user.role || 'renter'}
-                    onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                    disabled={updating === user.id}
-                    className="border rounded p-1 text-sm"
-                  >
-                    <option value="renter">Renter</option>
-                    <option value="owner">Owner</option>
-                    <option value="driver">Driver</option>
-                    <option value="admin">Admin</option>
-                  </select>
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    listing.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+                  }`}>
+                    {listing.status || "active"}
+                  </span>
                 </td>
-                <td className="px-4 py-3 text-sm">{user.createdAt?.toDate?.().toLocaleDateString() || 'Unknown'}</td>
                 <td className="px-4 py-3 text-sm">
                   <button
-                    onClick={() => {
-                      if (confirm('Delete this user? This action is irreversible.')) {
-                        deleteDoc(doc(db, 'users', user.id)).then(() => setUsers(prev => prev.filter(u => u.id !== user.id)));
-                      }
-                    }}
-                    className="text-red-600 hover:underline"
+                    onClick={() => handleVerifyToggle(listing.id, listing.isVerified)}
+                    className={`px-2 py-1 rounded text-xs ${
+                      listing.isVerified ? "bg-green-500 text-white" : "bg-gray-300 text-gray-700"
+                    }`}
                   >
-                    Delete
+                    {listing.isVerified ? "Verified" : "Verify"}
                   </button>
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <button onClick={() => handleDelete(listing.id)} className="text-red-600 hover:underline">Delete</button>
                 </td>
               </tr>
             ))}
@@ -108,4 +118,4 @@ const ManageUsers = () => {
   );
 };
 
-export default ManageUsers;
+export default ManageListings;

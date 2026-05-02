@@ -1,26 +1,24 @@
-import React, { createContext, useCallback, useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, updateDoc, writeBatch } from "firebase/firestore";
+import React, { createContext, useContext } from "react";
+import { addToCart, clearCart, getCart, removeFromCart, updateCartItem } from "../services/cart.service";
 import { useAuth } from "../auth/useAuth";
-import { db } from "../config/firebase";
 
-export const CartContext = createContext();
+const CartContext = createContext(null);
 
 export const CartProvider = ({ children }) => {
-  const { user, loading } = useAuth();
-  const [cartItems, setCartItems] = useState([]);
-  const [cartLoading, setCartLoading] = useState(false);
-  const [cartError, setCartError] = useState(null);
+  const { user } = useAuth();
+  const [cartItems, setCartItems] = React.useState([]);
+  const [cartLoading, setCartLoading] = React.useState(false);
+  const [cartError, setCartError] = React.useState(null);
 
-  const loadCart = useCallback(async () => {
-    if (!user) {
+  const loadCart = React.useCallback(async () => {
+    if (!user?.id) {
       setCartItems([]);
       return [];
     }
 
     try {
       setCartLoading(true);
-      const snapshot = await getDocs(collection(db, "cart", user.uid, "items"));
-      const items = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      const items = await getCart(user.id);
       setCartItems(items);
       setCartError(null);
       return items;
@@ -30,82 +28,67 @@ export const CartProvider = ({ children }) => {
     } finally {
       setCartLoading(false);
     }
-  }, [user]);
+  }, [user?.id]);
 
-  useEffect(() => {
-    if (!loading) {
-      loadCart();
-    }
-  }, [loadCart, loading]);
+  React.useEffect(() => {
+    loadCart();
+  }, [loadCart]);
 
-  const addToCart = useCallback(
+  const addItem = React.useCallback(
     async (item) => {
-      if (!user) {
+      if (!user?.id) {
         throw new Error("Must be logged in to add to cart");
       }
-
-      const payload = { ...item, addedAt: new Date() };
-      const docRef = await addDoc(collection(db, "cart", user.uid, "items"), payload);
-      setCartItems((current) => [...current, { id: docRef.id, ...payload }]);
-      return docRef.id;
+      const newItem = await addToCart(user.id, item);
+      setCartItems((prev) => [newItem, ...prev]);
+      return newItem;
     },
-    [user]
+    [user?.id]
   );
 
-  const removeFromCart = useCallback(
-    async (cartItemId) => {
-      if (!user) return;
-      await deleteDoc(doc(db, "cart", user.uid, "items", cartItemId));
-      setCartItems((current) => current.filter((item) => item.id !== cartItemId));
-    },
-    [user]
-  );
+  const removeItem = React.useCallback(async (itemId) => {
+    await removeFromCart(itemId);
+    setCartItems((prev) => prev.filter((item) => item.id !== itemId));
+  }, []);
 
-  const updateCartItem = useCallback(
-    async (cartItemId, updates) => {
-      if (!user) return;
-      await updateDoc(doc(db, "cart", user.uid, "items", cartItemId), {
-        ...updates,
-        updatedAt: new Date(),
-      });
-      setCartItems((current) =>
-        current.map((item) => (item.id === cartItemId ? { ...item, ...updates } : item))
-      );
-    },
-    [user]
-  );
+  const updateItem = React.useCallback(async (itemId, updates) => {
+    const updated = await updateCartItem(itemId, updates);
+    setCartItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)));
+    return updated;
+  }, []);
 
-  const clearCart = useCallback(async () => {
-    if (!user) return;
-    const snapshot = await getDocs(collection(db, "cart", user.uid, "items"));
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((item) => batch.delete(item.ref));
-    await batch.commit();
+  const clearAll = React.useCallback(async () => {
+    if (!user?.id) return;
+    await clearCart(user.id);
     setCartItems([]);
-  }, [user]);
+  }, [user?.id]);
 
-  const totalItems = cartItems.length;
+  const cartCount = cartItems.length;
   const totalAmount = cartItems.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
 
   const value = {
     cartItems,
-    totalItems,
-    cartCount: totalItems,
-    totalAmount,
     cartLoading,
     cartError,
-    addToCart,
-    removeFromCart,
-    updateCartItem,
-    clearCart,
+    totalItems: cartCount,
+    cartCount,
+    totalAmount,
+    addItem,
+    removeItem,
+    updateItem,
+    clearAll,
     loadCart,
+    addToCart: addItem,
+    removeFromCart: removeItem,
+    updateCartItem: updateItem,
+    clearCart: clearAll,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };
 
 export const useCart = () => {
-  const context = React.useContext(CartContext);
+  const context = useContext(CartContext);
   if (!context) {
     throw new Error("useCart must be used within CartProvider");
   }

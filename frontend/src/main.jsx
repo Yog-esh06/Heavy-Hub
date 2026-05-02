@@ -5,7 +5,7 @@ import App from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
 import { CartProvider } from "./store/CartContext";
 import { NotificationProvider } from "./store/NotificationContext";
-import { seedDemoDataIfEmpty } from "./data/seedFirestore";
+import { seedDemoDataIfEmpty } from "./data/seedSupabase";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

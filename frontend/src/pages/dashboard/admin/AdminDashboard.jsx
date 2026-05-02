@@ -1,8 +1,6 @@
-// frontend/src/pages/dashboard/admin/AdminDashboard.jsx
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { db } from '../../../config/firebase';
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { isSupabaseConfigured, supabase } from "../../../config/supabase";
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -15,18 +13,28 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (!isSupabaseConfigured) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const listingsSnap = await getDocs(collection(db, 'vehicles'));
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
-        const bookingsSnap = await getDocs(query(collection(db, 'bookings'), where('createdAt', '>=', Timestamp.fromDate(todayStart))));
-        const driversSnap = await getDocs(query(collection(db, 'drivers'), where('applicationStatus', '==', 'pending')));
+
+        const [{ count: totalUsers }, { count: totalListings }, { count: bookingsToday }, { count: pendingDrivers }] =
+          await Promise.all([
+            supabase.from("users").select("*", { count: "exact", head: true }),
+            supabase.from("vehicles").select("*", { count: "exact", head: true }),
+            supabase.from("bookings").select("*", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
+            supabase.from("drivers").select("*", { count: "exact", head: true }).eq("application_status", "pending"),
+          ]);
+
         setStats({
-          totalUsers: usersSnap.size,
-          totalListings: listingsSnap.size,
-          bookingsToday: bookingsSnap.size,
-          pendingDrivers: driversSnap.size,
+          totalUsers: totalUsers || 0,
+          totalListings: totalListings || 0,
+          bookingsToday: bookingsToday || 0,
+          pendingDrivers: pendingDrivers || 0,
         });
       } catch (err) {
         console.error(err);
@@ -34,11 +42,22 @@ const AdminDashboard = () => {
         setLoading(false);
       }
     };
+
     fetchStats();
   }, []);
 
   if (loading) {
     return <div className="container mx-auto px-4 py-8 text-center">Loading dashboard...</div>;
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-900">
+          Configure Supabase in `frontend/.env` to use the admin dashboard.
+        </div>
+      </div>
+    );
   }
 
   return (

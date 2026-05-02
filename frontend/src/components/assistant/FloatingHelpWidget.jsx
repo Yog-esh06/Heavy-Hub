@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { getAIResponse } from "../../services/helpAssistant.service";
+import { getAIHelpResponse } from "../../services/chat.service";
 
 const suggestedPromptsByRoute = {
   "/": [
@@ -21,7 +21,7 @@ const suggestedPromptsByRoute = {
   "/login": [
     "Why am I being asked to sign in?",
     "What roles can I choose?",
-    "What does Firebase auth do here?",
+    "How does authentication work here?",
   ],
 };
 
@@ -30,49 +30,42 @@ const FloatingHelpWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [conversationHistory, setConversationHistory] = useState([]);
   const [messages, setMessages] = useState([
     {
       id: "welcome",
       role: "assistant",
-      text: "Need help? Ask about navigation, booking, listings, login, or map views.",
+      text: "Hi! I'm HeavyHub Assistant. Ask me anything about renting or buying equipment, pricing, bookings, or how the platform works!",
     },
   ]);
 
   const suggestions = useMemo(() => {
     const direct = suggestedPromptsByRoute[location.pathname];
-    if (direct) {
-      return direct;
-    }
+    if (direct) return direct;
     if (location.pathname.startsWith("/dashboard")) {
       return ["How do dashboards work?", "How do I switch roles?", "Where do I manage bookings?"];
     }
     return ["How do I use this site?", "Where do I browse vehicles?", "How does login work?"];
   }, [location.pathname]);
 
-  async function handleSend(preset) {
+  const handleSend = async (preset) => {
     const nextInput = typeof preset === "string" ? preset : input;
-    if (!nextInput.trim()) {
-      return;
-    }
+    if (!nextInput.trim()) return;
 
     const userText = nextInput.trim();
     const userMsg = { role: "user", content: userText };
-    const newHistory = [...history, userMsg];
+    const nextHistory = [...conversationHistory, userMsg];
 
-    setHistory(newHistory);
+    setConversationHistory(nextHistory);
     setMessages((prev) => [...prev, { id: `${Date.now()}-user`, role: "user", text: userText }]);
     setInput("");
     setIsLoading(true);
 
     try {
-      const { message } = await getAIResponse(userText, history);
+      const { message } = await getAIHelpResponse(userText, conversationHistory);
       const aiMsg = { role: "assistant", content: message };
-      setHistory((prev) => [...prev, aiMsg]);
-      setMessages((prev) => [
-        ...prev,
-        { id: `${Date.now()}-assistant`, role: "assistant", text: message },
-      ]);
+      setConversationHistory((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [...prev, { id: `${Date.now()}-assistant`, role: "assistant", text: message }]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -81,7 +74,7 @@ const FloatingHelpWidget = () => {
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="fixed bottom-5 right-5 z-50">

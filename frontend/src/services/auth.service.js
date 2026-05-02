@@ -1,114 +1,143 @@
-import { auth, db } from "../config/firebase";
-import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { isSupabaseConfigured, supabase } from "../config/supabase";
 
-const provider = new GoogleAuthProvider();
-provider.addScope("email");
-provider.addScope("profile");
+function requireSupabase() {
+  if (!isSupabaseConfigured) {
+    throw new Error("Configure Supabase in frontend/.env to enable authentication.");
+  }
+}
 
 export async function signInWithGoogle() {
-  const result = await signInWithPopup(auth, provider);
-  const user = result.user;
+  requireSupabase();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+      queryParams: { access_type: "offline", prompt: "consent" },
+    },
+  });
 
-  const userRef = doc(db, "users", user.uid);
-  const userSnap = await getDoc(userRef);
-
-  if (!userSnap.exists()) {
-    await setDoc(userRef, {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      phone: "",
-      role: null,
-      activeRole: null,
-      roles: [],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    return { user, isNewUser: true };
+  if (error) {
+    throw error;
   }
 
-  return { user, isNewUser: false, userData: userSnap.data() };
+  return data;
 }
 
-export async function logOut() {
-  await signOut(auth);
+export async function signOut() {
+  if (!isSupabaseConfigured) {
+    return;
+  }
+
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    throw error;
+  }
 }
 
-export async function getUserData(uid) {
-  const userRef = doc(db, "users", uid);
-  const snap = await getDoc(userRef);
-  return snap.exists() ? snap.data() : null;
+export async function getCurrentUser() {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
 }
-
-export async function updateUserRole(uid, role) {
-  const userRef = doc(db, "users", uid);
-  const existing = await getUserData(uid);
-  const currentRoles = existing?.roles || [];
-  const nextRoles = currentRoles.includes(role) ? currentRoles : [...currentRoles, role];
-
-  await setDoc(
-    userRef,
-    {
-      role,
-      roles: nextRoles,
-      activeRole: role,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-}
-
-export async function signOutUser() {
-  await logOut();
-}
-
-export const getCurrentAuthUser = () => auth.currentUser;
 
 export async function getUserProfile(userId) {
-  const userData = await getUserData(userId);
-  if (!userData) {
-    throw new Error("User profile not found");
+  if (!isSupabaseConfigured || !userId) {
+    return null;
   }
-  return userData;
+
+  const { data, error } = await supabase.from("users").select("*").eq("id", userId).maybeSingle();
+  if (error && error.code !== "PGRST116") {
+    throw error;
+  }
+
+  return data;
 }
 
-export async function updateUserProfile(userId, updates) {
-  const userRef = doc(db, "users", userId);
-  await updateDoc(userRef, {
-    ...updates,
-    updatedAt: serverTimestamp(),
-  });
+export async function createUserProfile(user) {
+  requireSupabase();
+  const payload = {
+    id: user.id,
+    email: user.email,
+    display_name: user.user_metadata?.full_name || user.email,
+    photo_url: user.user_metadata?.avatar_url || "",
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("users")
+    .upsert(payload, { onConflict: "id" })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }
 
-export async function setUserRoles(userId, roles) {
-  const userRef = doc(db, "users", userId);
-  await setDoc(
-    userRef,
-    {
+export async function updateUserRole(userId, role) {
+  requireSupabase();
+  const { data, error } = await supabase
+    .from("users")
+    .update({
+      role,
+      active_role: role,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateUserRoles(userId, roles) {
+  requireSupabase();
+  const primaryRole = roles[0] || null;
+  const { data, error } = await supabase
+    .from("users")
+    .update({
       roles,
-      role: roles[0] || null,
-      activeRole: roles[0] || null,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+      role: primaryRole,
+      active_role: primaryRole,
+      has_multiple_roles: roles.length > 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId)
+    .select()
+    .single();
 
-  return getUserData(userId);
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }
 
-export async function switchActiveRole(userId, roleId) {
-  const userRef = doc(db, "users", userId);
-  await setDoc(
-    userRef,
-    {
-      activeRole: roleId,
-      role: roleId,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+export async function switchActiveRole(userId, role) {
+  requireSupabase();
+  const { data, error } = await supabase
+    .from("users")
+    .update({ active_role: role, updated_at: new Date().toISOString() })
+    .eq("id", userId)
+    .select()
+    .single();
 
-  return getUserData(userId);
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }
+
+export const signOutUser = signOut;
